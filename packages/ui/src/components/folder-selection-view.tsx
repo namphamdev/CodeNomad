@@ -24,10 +24,21 @@ const FolderSelectionView: Component<FolderSelectionViewProps> = (props) => {
   const [focusMode, setFocusMode] = createSignal<"recent" | "new" | null>("recent")
   const [selectedBinary, setSelectedBinary] = createSignal(preferences().lastUsedBinary || "opencode")
   const [isFolderBrowserOpen, setIsFolderBrowserOpen] = createSignal(false)
+  const [searchQuery, setSearchQuery] = createSignal("")
   const nativeDialogsAvailable = supportsNativeDialogs()
   let recentListRef: HTMLDivElement | undefined
+  let searchInputRef: HTMLInputElement | undefined
  
-  const folders = () => recentFolders()
+  const folders = () => {
+    const query = searchQuery().toLowerCase().trim()
+    if (!query) return recentFolders()
+    
+    return recentFolders().filter(folder => {
+      const folderName = folder.path.split("/").pop()?.toLowerCase() || ""
+      const fullPath = folder.path.toLowerCase()
+      return folderName.includes(query) || fullPath.includes(query)
+    })
+  }
   const isLoading = () => Boolean(props.isLoading)
 
   // Update selected binary when preferences change
@@ -58,6 +69,7 @@ const FolderSelectionView: Component<FolderSelectionViewProps> = (props) => {
   function handleKeyDown(e: KeyboardEvent) {
     const normalizedKey = e.key.toLowerCase()
     const isBrowseShortcut = (e.metaKey || e.ctrlKey) && !e.shiftKey && normalizedKey === "n"
+    const isFocusSearchShortcut = (e.metaKey || e.ctrlKey) && !e.shiftKey && normalizedKey === "f"
     const blockedKeys = [
       "ArrowDown",
       "ArrowUp",
@@ -71,13 +83,19 @@ const FolderSelectionView: Component<FolderSelectionViewProps> = (props) => {
     ]
 
     if (isLoading()) {
-      if (isBrowseShortcut || blockedKeys.includes(e.key)) {
+      if (isBrowseShortcut || isFocusSearchShortcut || blockedKeys.includes(e.key)) {
         e.preventDefault()
       }
       return
     }
 
     const folderList = folders()
+
+    if (isFocusSearchShortcut) {
+      e.preventDefault()
+      searchInputRef?.focus()
+      return
+    }
 
     if (isBrowseShortcut) {
       e.preventDefault()
@@ -262,8 +280,12 @@ const FolderSelectionView: Component<FolderSelectionViewProps> = (props) => {
                   <div class="panel-empty-state-icon">
                     <Clock class="w-12 h-12 mx-auto" />
                   </div>
-                  <p class="panel-empty-state-title">No Recent Folders</p>
-                  <p class="panel-empty-state-description">Browse for a folder to get started</p>
+                  <p class="panel-empty-state-title">
+                    {searchQuery() ? "No Matching Folders" : "No Recent Folders"}
+                  </p>
+                  <p class="panel-empty-state-description">
+                    {searchQuery() ? "Try a different search term" : "Browse for a folder to get started"}
+                  </p>
                 </div>
               }
             >
@@ -271,8 +293,22 @@ const FolderSelectionView: Component<FolderSelectionViewProps> = (props) => {
                 <div class="panel-header">
                   <h2 class="panel-title">Recent Folders</h2>
                   <p class="panel-subtitle">
-                    {folders().length} {folders().length === 1 ? "folder" : "folders"} available
+                    {folders().length} {folders().length === 1 ? "folder" : "folders"} {searchQuery() ? "matching" : "available"}
                   </p>
+                </div>
+                <div class="px-4 pb-3">
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    placeholder="Search folders..."
+                    value={searchQuery()}
+                    onInput={(e) => {
+                      setSearchQuery(e.currentTarget.value)
+                      setSelectedIndex(0)
+                    }}
+                    class="w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100"
+                    disabled={isLoading()}
+                  />
                 </div>
                 <div class="panel-list panel-list--fill flex-1 min-h-0 overflow-auto" ref={(el) => (recentListRef = el)}>
                   <For each={folders()}>
